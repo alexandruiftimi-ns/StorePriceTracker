@@ -1,0 +1,8 @@
+flask
+requests
+truststore
+beautifulsoup4
+pandas
+pyxlsb
+python-dotenv
+playwright

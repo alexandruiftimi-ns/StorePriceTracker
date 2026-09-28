@@ -1,0 +1,12 @@
+# Secrets: your own Telegram bot token and chat id
+.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Personal data created when the app runs
+data/
+history/

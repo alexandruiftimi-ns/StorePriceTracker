@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stores Price Tracker</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">🛒</span>
+      <div>
+        <div class="brand-name">Price Tracker</div>
+        <div class="brand-sub">Auchan · Lidl · Kaufland</div>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="products" role="tab">My products</button>
+      <button class="tab" data-view="list" role="tab">
+        Shopping list <span class="count" id="list-count">0</span>
+      </button>
+      <button class="tab" data-view="settings" role="tab">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ======================= MY PRODUCTS ======================= -->
+    <section class="view active" id="view-products">
+      <div class="view-head">
+        <div>
+          <h1>My products</h1>
+          <p class="muted">Tap a product when you run out of it. It goes to your shopping list.</p>
+        </div>
+        <div class="actions">
+          <input type="search" id="product-filter" placeholder="Filter products…" aria-label="Filter products">
+          <button class="btn primary" id="add-product">+ Add product</button>
+        </div>
+      </div>
+      <div id="product-groups"></div>
+    </section>
+
+    <!-- ======================= SHOPPING LIST ======================= -->
+    <section class="view" id="view-list">
+      <div class="view-head">
+        <div>
+          <h1>Shopping list</h1>
+          <p class="muted" id="list-subtitle">Products you ran out of.</p>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" id="clear-list">Clear list</button>
+          <button class="btn primary big" id="search-markets">🔍 Search markets</button>
+        </div>
+      </div>
+
+      <div id="location-notice" class="notice hidden">
+        📍 Kaufland prices are from the store nearest to <strong>central Bucharest</strong>, the default location.
+        For your nearest store, open <a href="#" data-goto="settings">Settings</a> and use <strong>Use my current location</strong>.
+      </div>
+
+      <div id="shopping-items" class="chips-list"></div>
+
+      <div id="progress" class="progress hidden">
+        <div class="progress-text"><span id="progress-message">Starting…</span><span id="progress-count"></span></div>
+        <div class="progress-bar"><div id="progress-fill"></div></div>
+      </div>
+
+      <div id="results"></div>
+    </section>
+
+    <!-- ======================= SETTINGS ======================= -->
+    <section class="view" id="view-settings">
+      <div class="view-head">
+        <div>
+          <h1>Settings</h1>
+          <p class="muted">Your location picks the nearest Kaufland for its shelf prices.</p>
+        </div>
+      </div>
+      <form id="settings-form" class="card form">
+        <fieldset>
+          <legend>Location</legend>
+          <div class="row">
+            <label>Latitude <input name="latitude" type="number" step="any" required></label>
+            <label>Longitude <input name="longitude" type="number" step="any" required></label>
+            <label>Kaufland search radius (km) <input name="kaufland_radius_km" type="number" min="1" max="50" step="1" required></label>
+          </div>
+          <p class="muted" id="location-hint">The default is central Bucharest. Press <strong>Use my current location</strong> (your browser asks for permission), then <strong>Save settings</strong>. You can also type coordinates copied from Google Maps.</p>
+          <button type="button" class="btn ghost small" id="use-location">📍 Use my current location</button>
+        </fieldset>
+        <fieldset>
+          <legend>Stores</legend>
+          <div class="row" id="store-toggles"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Options</legend>
+          <label class="check"><input type="checkbox" name="include_loyalty_prices"> Count loyalty card prices (Lidl Plus, Kaufland Card)</label>
+          <label class="check"><input type="checkbox" name="send_to_telegram"> Also send search results to Telegram (needs .env)</label>
+        </fieldset>
+        <div class="form-actions">
+          <span class="muted" id="settings-status"></span>
+          <button class="btn primary" type="submit">Save settings</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- ======================= PRODUCT EDITOR ======================= -->
+  <dialog id="product-dialog">
+    <form id="product-form" method="dialog" class="form">
+      <header class="dialog-head">
+        <h2 id="dialog-title">Add product</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </header>
+
+      <div class="row">
+        <label>Name <input name="label" required placeholder="e.g. Chicken breast"></label>
+        <label>Category <input name="category" list="category-options" placeholder="e.g. Meat"></label>
+      </div>
+      <datalist id="category-options"></datalist>
+
+      <label>Search term <span class="hint">what you would type in the store's search box (Romanian)</span>
+        <input name="search_term" placeholder="e.g. piept de pui">
+      </label>
+
+      <label>Must contain <span class="hint">comma separated; use | for alternatives, e.g. <code>piept de pui|piept pui</code>. Empty = the search term.</span>
+        <input name="required_words" placeholder="piept de pui|piept pui">
+      </label>
+
+      <label>Exclude products containing <span class="hint">comma separated</span>
+        <textarea name="excluded_words" rows="3" placeholder="sunca, crenvursti, nuggets"></textarea>
+      </label>
+
+      <label class="check"><input type="checkbox" name="match_start"> <span>Name must <strong>start</strong> with the first "must contain" word (good for fresh produce: "Banane", not "Iaurt cu banane")</span></label>
+      <label class="check" id="add-to-list-row"><input type="checkbox" name="in_shopping_list"> Add to shopping list now</label>
+
+      <div id="preview" class="preview hidden"></div>
+
+      <footer class="form-actions">
+        <button type="button" class="btn danger ghost" id="delete-product">Delete</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="preview-product">Test search</button>
+        <button type="submit" class="btn primary">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
