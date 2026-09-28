@@ -24,7 +24,17 @@ DEFAULT_SETTINGS = {
     "include_loyalty_prices": True,
     "enabled_stores": list(STORES),
     "send_to_telegram": False,
+    # The Lidl stores the user shops at, picked in Settings:
+    # [{"id", "name", "address", "latitude", "longitude"}].
+    # Empty = Lidl's national price list.
+    "lidl_stores": [],
+    # Stored only on this computer (data/ is git-ignored).
+    # Empty = fall back to TELEGRAM_* in .env.
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
 }
+
+LIDL_STORE_FIELDS = ("id", "name", "address", "latitude", "longitude")
 
 _lock = threading.RLock()
 
@@ -250,6 +260,17 @@ def save_settings(payload: dict) -> dict:
         for store in STORES
         if store in settings["enabled_stores"]
     ]
+    settings["lidl_stores"] = [
+        {
+            **{field: store[field] for field in LIDL_STORE_FIELDS},
+            "id": str(store["id"]),
+            "latitude": float(store["latitude"]),
+            "longitude": float(store["longitude"]),
+        }
+        for store in settings["lidl_stores"] or []
+    ]
+    settings["telegram_bot_token"] = str(settings["telegram_bot_token"] or "").strip()
+    settings["telegram_chat_id"] = str(settings["telegram_chat_id"] or "").strip()
 
     with _lock:
         _write_json(SETTINGS_FILE, settings)

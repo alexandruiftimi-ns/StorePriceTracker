@@ -11,6 +11,8 @@ const state = {
   settings: null,
   report: null,
   editingId: null,
+  selectedLidl: new Map(),
+  lidlCandidates: [],
   polling: null,
 };
 
@@ -270,7 +272,7 @@ $("#preview-product").addEventListener("click", async () => {
         const matches = item.products.filter((p) => p.store === store);
         return `<h4 class="store-tag" ${storeStyle(store)}>${esc(store)} (${item.per_store[store].count})</h4>
           ${matches.length
-            ? `<ul>${matches.map((p) => `<li>${esc(p.name)} · ${priceText(p, item.compare_unit)}${promoBadges(p)}</li>`).join("")}</ul>`
+            ? `<ul>${matches.map((p) => `<li>${esc(p.name)} · ${priceText(p, item.compare_unit)}${promoBadges(p)}${branchLine(p)}</li>`).join("")}</ul>`
             : `<p class="muted">No matches.</p>`}`;
       }).join("")}
       ${errorList(report.errors)}`;
@@ -393,6 +395,10 @@ function promoBadges(product) {
   return html;
 }
 
+function branchLine(product) {
+  return product && product.branch ? `<div class="branch">${esc(product.branch)}</div>` : "";
+}
+
 function errorList(errors) {
   const entries = Object.entries(errors || {});
   if (!entries.length) return "";
@@ -448,7 +454,7 @@ function renderPlan(plan, items) {
         <h4>${esc(store)}</h4>
         <ul>${plan[store].map((entry) => `
           <li><strong>${esc(entry.label)}</strong>
-            ${entry.product ? `· ${priceText(entry.product, units[entry.label])}${promoBadges(entry.product)}` : ""}
+            ${entry.product ? `· ${priceText(entry.product, units[entry.label])}${promoBadges(entry.product)}${branchLine(entry.product)}` : ""}
             ${entry.cheaper_elsewhere ? `<div class="muted" style="font-size:.8rem">Cheaper at <span class="store-tag" ${storeStyle(entry.cheaper_elsewhere.store)}>${esc(entry.cheaper_elsewhere.store)}</span>: ${priceText(entry.cheaper_elsewhere, units[entry.label])}</div>` : ""}</li>`).join("")}
         </ul>
       </div>`).join("")}
@@ -477,7 +483,8 @@ function renderItem(item, stores) {
         ${unit ? `<small>· ${lei(product.price)}${product.package ? ` / ${esc(product.package)}` : ""}</small>` : ""}</div>
       <div class="pname"><a href="${esc(product.url)}" target="_blank" rel="noopener">${esc(product.name)}</a>${promoBadges(product)}
         ${product.old_price ? `<span class="old-price">${lei(product.old_price)}</span>` : ""}</div>
-      ${promo && promo.name !== product.name ? `<div class="pname">Best promo: ${esc(promo.name)} · ${priceText(promo, unit)}${promoBadges(promo)}</div>` : ""}
+      ${branchLine(product)}
+      ${promo && promo.name !== product.name ? `<div class="pname">Best promo: ${esc(promo.name)} · ${priceText(promo, unit)}${promoBadges(promo)}</div>${branchLine(promo)}` : ""}
     </div>`;
   }).join("");
 
@@ -485,6 +492,7 @@ function renderItem(item, stores) {
     <tr>
       <td class="store-tag" ${storeStyle(product.store)}>${esc(product.store)}</td>
       <td><a href="${esc(product.url)}" target="_blank" rel="noopener">${esc(product.name)}</a>${promoBadges(product)}
+        ${branchLine(product)}
         <div class="muted" style="font-size:.78rem">${esc(product.source || "")}</div></td>
       <td>${esc(product.package || "")}</td>
       <td class="num">${lei(product.price)}${product.old_price ? `<br><span class="old-price">${lei(product.old_price)}</span>` : ""}</td>
@@ -579,6 +587,13 @@ $("#results").addEventListener("click", async (event) => {
 
 const settingsForm = $("#settings-form");
 
+function distanceKm(latA, lonA, latB, lonB) {
+  const rad = (degrees) => (degrees * Math.PI) / 180;
+  const a = Math.sin(rad(latB - latA) / 2) ** 2
+    + Math.cos(rad(latA)) * Math.cos(rad(latB)) * Math.sin(rad(lonB - lonA) / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function renderSettings() {
   const settings = state.settings;
   if (!settings) return;
@@ -588,31 +603,216 @@ function renderSettings() {
   settingsForm.kaufland_radius_km.value = settings.kaufland_radius_km;
   settingsForm.include_loyalty_prices.checked = settings.include_loyalty_prices;
   settingsForm.send_to_telegram.checked = settings.send_to_telegram;
+  settingsForm.telegram_chat_id.value = settings.telegram_chat_id || "";
+  settingsForm.telegram_bot_token.value = "";
+  settingsForm.telegram_bot_token.placeholder = settings.telegram_token_saved
+    ? `Saved (${settings.telegram_token_hint}). Paste a new token to replace it.`
+    : "123456789:AAH…";
+
   $("#location-notice").classList.toggle("hidden", !settings.is_default_location);
 
   $("#store-toggles").innerHTML = settings.available_stores.map((store) => `
     <label class="check"><input type="checkbox" name="store" value="${esc(store)}"
       ${settings.enabled_stores.includes(store) ? "checked" : ""}>
       <span class="store-tag" ${storeStyle(store)}>${esc(store)}</span></label>`).join("");
+
+  state.selectedLidl = new Map((settings.lidl_stores || []).map((store) => [store.id, store]));
+  renderLidlStores();
+  renderTelegramState();
 }
+
+// ---------- Lidl store picker ----------
+
+function renderLidlStores() {
+  const latitude = Number(settingsForm.latitude.value);
+  const longitude = Number(settingsForm.longitude.value);
+
+  const all = new Map(state.selectedLidl);
+  state.lidlCandidates.forEach((store) => {
+    if (!all.has(store.id)) all.set(store.id, store);
+  });
+
+  const stores = [...all.values()]
+    .map((store) => ({ ...store, km: distanceKm(latitude, longitude, store.latitude, store.longitude) }))
+    .sort((a, b) => a.km - b.km);
+
+  const selectedCount = state.selectedLidl.size;
+  $("#lidl-status").textContent = selectedCount
+    ? `${selectedCount} selected`
+    : "None selected: using Lidl's national price list.";
+
+  $("#lidl-stores").innerHTML = stores.map((store) => `
+    <label class="store-option">
+      <input type="checkbox" data-lidl="${esc(store.id)}" ${state.selectedLidl.has(store.id) ? "checked" : ""}>
+      <span><span class="store-title">${esc(store.name)}</span><br>
+        <span class="store-address">${esc(store.address)}</span></span>
+      <span class="store-distance">${store.km.toFixed(1)} km</span>
+    </label>`).join("");
+}
+
+$("#lidl-stores").addEventListener("change", (event) => {
+  const box = event.target.closest("[data-lidl]");
+  if (!box) return;
+
+  const id = box.dataset.lidl;
+  const store = [...state.lidlCandidates, ...state.selectedLidl.values()].find((s) => s.id === id);
+
+  if (box.checked && store) state.selectedLidl.set(id, store);
+  else state.selectedLidl.delete(id);
+
+  renderLidlStores();
+});
+
+$("#find-lidl").addEventListener("click", async () => {
+  const button = $("#find-lidl");
+  button.disabled = true;
+  $("#lidl-status").textContent = "Searching…";
+
+  try {
+    const params = new URLSearchParams({
+      lat: settingsForm.latitude.value,
+      lon: settingsForm.longitude.value,
+      radius: settingsForm.kaufland_radius_km.value,
+    });
+    state.lidlCandidates = await api(`/api/stores/lidl?${params}`);
+    renderLidlStores();
+
+    if (!state.lidlCandidates.length) {
+      $("#lidl-status").textContent = "No Lidl stores found. Try a larger search radius.";
+    } else {
+      toast(`${state.lidlCandidates.length} Lidl stores found. Tick yours, then Save settings.`);
+    }
+  } catch (error) {
+    $("#lidl-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+["latitude", "longitude"].forEach((name) =>
+  settingsForm[name].addEventListener("change", renderLidlStores));
+
+// ---------- Telegram ----------
+
+function setResult(selector, ok, html) {
+  const element = $(selector);
+  element.className = `small-print ${ok ? "ok-text" : "err-text"}`;
+  element.innerHTML = html;
+}
+
+function renderTelegramState() {
+  const settings = state.settings;
+  const box = $("#telegram-state");
+
+  if (!settings.telegram_configured) {
+    box.classList.add("hidden");
+    return;
+  }
+
+  box.innerHTML = settings.telegram_from_env
+    ? "✓ Telegram is set up through the <code>.env</code> file. Enter a token below to use a different bot."
+    : `✓ Telegram is set up (token ${esc(settings.telegram_token_hint)}, chat ${esc(settings.telegram_chat_id)}).`
+      + (settings.send_to_telegram ? " Results are sent after each search." : " Tick step 6 to receive results.");
+  box.classList.remove("hidden");
+}
+
+function typedToken() {
+  return settingsForm.telegram_bot_token.value.trim();
+}
+
+$("#tg-check").addEventListener("click", async () => {
+  try {
+    const bot = await api("/api/telegram/check", { method: "POST", body: { token: typedToken() } });
+    const link = `<a href="https://t.me/${esc(bot.username)}" target="_blank" rel="noopener">@${esc(bot.username)}</a>`;
+    setResult("#tg-check-result", true, `✓ Token works: your bot is ${link}.`);
+    $("#tg-bot-link").innerHTML = `(${link})`;
+  } catch (error) {
+    setResult("#tg-check-result", false, esc(error.message));
+  }
+});
+
+$("#tg-chats").addEventListener("click", async () => {
+  try {
+    const chats = await api("/api/telegram/chats", { method: "POST", body: { token: typedToken() } });
+
+    if (!chats.length) {
+      setResult("#tg-chats-result", false,
+        "No messages found yet. Send your bot a message (step 3), wait a few seconds, then press this again.");
+      return;
+    }
+
+    settingsForm.telegram_chat_id.value = chats[0].id;
+
+    const others = chats.slice(1).map((chat) =>
+      `<button type="button" class="linkish" data-chat="${esc(chat.id)}">${esc(chat.name)}</button>`).join(", ");
+
+    setResult("#tg-chats-result", true, chats.length === 1
+      ? `✓ Found: ${esc(chats[0].name)}.`
+      : `✓ Filled in ${esc(chats[0].name)}. Other chats: ${others}`);
+  } catch (error) {
+    setResult("#tg-chats-result", false, esc(error.message));
+  }
+});
+
+$("#tg-chats-result").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-chat]");
+  if (button) settingsForm.telegram_chat_id.value = button.dataset.chat;
+});
+
+$("#tg-test").addEventListener("click", async () => {
+  try {
+    await api("/api/telegram/test", {
+      method: "POST",
+      body: { token: typedToken(), chat_id: settingsForm.telegram_chat_id.value },
+    });
+    setResult("#tg-test-result", true, "✓ Sent. Check Telegram. Then tick step 6 and Save settings.");
+  } catch (error) {
+    setResult("#tg-test-result", false, esc(error.message));
+  }
+});
+
+$("#tg-remove").addEventListener("click", async () => {
+  if (!confirm("Remove the saved Telegram token and chat ID from this computer?")) return;
+
+  state.settings = await api("/api/settings", {
+    method: "PUT",
+    body: { telegram_bot_token: "", telegram_chat_id: "", send_to_telegram: false },
+  });
+  renderSettings();
+  ["#tg-check-result", "#tg-chats-result", "#tg-test-result", "#tg-bot-link"].forEach((selector) => {
+    $(selector).innerHTML = "";
+  });
+  toast("Telegram details removed");
+});
+
+// ---------- save ----------
 
 settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  try {
-    const saved = await api("/api/settings", {
-      method: "PUT",
-      body: {
-        latitude: settingsForm.latitude.value,
-        longitude: settingsForm.longitude.value,
-        kaufland_radius_km: settingsForm.kaufland_radius_km.value,
-        include_loyalty_prices: settingsForm.include_loyalty_prices.checked,
-        send_to_telegram: settingsForm.send_to_telegram.checked,
-        enabled_stores: [...settingsForm.querySelectorAll("input[name=store]:checked")].map((input) => input.value),
-      },
-    });
+  const body = {
+    latitude: settingsForm.latitude.value,
+    longitude: settingsForm.longitude.value,
+    kaufland_radius_km: settingsForm.kaufland_radius_km.value,
+    include_loyalty_prices: settingsForm.include_loyalty_prices.checked,
+    send_to_telegram: settingsForm.send_to_telegram.checked,
+    enabled_stores: [...settingsForm.querySelectorAll("input[name=store]:checked")].map((input) => input.value),
+    lidl_stores: [...state.selectedLidl.values()].map(({ id, name, address, latitude, longitude }) =>
+      ({ id, name, address, latitude, longitude })),
+    telegram_chat_id: settingsForm.telegram_chat_id.value,
+  };
 
-    state.settings = await api("/api/settings");
+  // Only replace the saved token when a new one was typed.
+  if (typedToken()) body.telegram_bot_token = typedToken();
+
+  const hasToken = typedToken() || state.settings.telegram_token_saved || state.settings.telegram_from_env;
+  if (body.send_to_telegram && !hasToken) {
+    toast("Add your bot token (step 2) before turning Telegram on.");
+    return;
+  }
+
+  try {
+    state.settings = await api("/api/settings", { method: "PUT", body });
     renderSettings();
     toast("Settings saved");
   } catch (error) {
@@ -630,9 +830,10 @@ $("#use-location").addEventListener("click", () => {
     (position) => {
       settingsForm.latitude.value = position.coords.latitude.toFixed(5);
       settingsForm.longitude.value = position.coords.longitude.toFixed(5);
-      toast("Location filled in. Press Save settings.");
+      renderLidlStores();
+      toast("Location filled in. Now find your Lidl stores, then Save settings.");
     },
-    () => toast("Could not get your location"),
+    () => toast("Could not get your location. You can type the coordinates instead."),
   );
 });
 

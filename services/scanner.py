@@ -15,6 +15,7 @@ from stores.lidl import (
     search_lidl,
     search_lidl_offers,
 )
+from stores.monitor import search_selected_stores
 from utils.http import create_session
 
 
@@ -40,7 +41,7 @@ class ScanResult:
 
 
 def _shared_sources(
-    enabled_stores: list[str],
+    settings: dict,
     result: ScanResult,
 ) -> dict:
     """
@@ -48,8 +49,11 @@ def _shared_sources(
     once per product.
     """
     sources: dict = {}
+    enabled_stores = settings["enabled_stores"]
 
-    if "Lidl" in enabled_stores:
+    # With chosen Lidl stores, their own prices replace the
+    # national price list.
+    if "Lidl" in enabled_stores and not settings.get("lidl_stores"):
         try:
             sources["lidl_dataframe"] = load_lidl_dataframe_cached()
         except Exception as error:
@@ -86,7 +90,22 @@ def _build_tasks(
             )
 
         if "Lidl" in enabled_stores:
-            if "lidl_dataframe" in sources:
+            if settings.get("lidl_stores"):
+                tasks.append(
+                    (
+                        "Lidl",
+                        item,
+                        lambda item=item: search_selected_stores(
+                            item,
+                            chain="Lidl",
+                            latitude=settings["latitude"],
+                            longitude=settings["longitude"],
+                            selected_stores=settings["lidl_stores"],
+                        ),
+                    )
+                )
+
+            elif "lidl_dataframe" in sources:
                 tasks.append(
                     (
                         "Lidl",
@@ -150,9 +169,9 @@ def run_scan(
         if progress is not None:
             progress(done, total, message)
 
-    report(0, 1, "Downloading Lidl daily prices and Kaufland offers…")
+    report(0, 1, "Preparing store data…")
 
-    sources = _shared_sources(settings["enabled_stores"], result)
+    sources = _shared_sources(settings, result)
     tasks = _build_tasks(watch_items, settings, sources)
     total = len(tasks)
 

@@ -240,27 +240,120 @@ def latest_search():
 # ============================================================
 
 
+def _public_settings(settings: dict) -> dict:
+    """
+    Settings for the page. The saved bot token is never sent
+    back, only whether one is set and its last characters.
+    """
+    from utils.telegram import get_credentials
+
+    token = settings.get("telegram_bot_token", "")
+    effective_token, effective_chat_id = get_credentials()
+
+    return {
+        **{key: value for key, value in settings.items() if key != "telegram_bot_token"},
+        "telegram_token_saved": bool(token),
+        "telegram_token_hint": f"…{token[-4:]}" if token else "",
+        "telegram_from_env": bool(effective_token and not token),
+        "telegram_configured": bool(effective_token and effective_chat_id),
+        "available_stores": catalog.STORES,
+        "is_default_location": (
+            settings["latitude"] == catalog.DEFAULT_SETTINGS["latitude"]
+            and settings["longitude"] == catalog.DEFAULT_SETTINGS["longitude"]
+        ),
+    }
+
+
 @app.get("/api/settings")
 def get_settings():
-    settings = catalog.load_settings()
-
-    return jsonify(
-        {
-            **settings,
-            "available_stores": catalog.STORES,
-            "is_default_location": (
-                settings["latitude"] == catalog.DEFAULT_SETTINGS["latitude"]
-                and settings["longitude"] == catalog.DEFAULT_SETTINGS["longitude"]
-            ),
-        }
-    )
+    return jsonify(_public_settings(catalog.load_settings()))
 
 
 @app.put("/api/settings")
 def put_settings():
     try:
         settings = catalog.save_settings(request.get_json() or {})
-    except (TypeError, ValueError) as error:
+    except (KeyError, TypeError, ValueError) as error:
         return _error(f"Invalid settings: {error}")
 
-    return jsonify(settings)
+    return jsonify(_public_settings(settings))
+
+
+# ============================================================
+# LIDL STORE PICKER
+# ============================================================
+
+
+@app.get("/api/stores/lidl")
+def nearby_lidl_stores():
+    from stores.monitor import find_stores_near
+
+    try:
+        latitude = float(request.args["lat"])
+        longitude = float(request.args["lon"])
+        radius_km = min(float(request.args.get("radius", 5)), 30)
+    except (KeyError, ValueError):
+        return _error("lat and lon are required.")
+
+    try:
+        stores = find_stores_near("Lidl", latitude, longitude, radius_km)
+    except Exception as error:
+        return _error(f"Could not load Lidl stores: {error}", 502)
+
+    return jsonify(stores)
+
+
+# ============================================================
+# TELEGRAM SETUP
+# ============================================================
+# Each endpoint takes the token typed in the form, or falls back
+# to the saved one, so the steps can be tried before saving.
+
+
+def _telegram_token(payload: dict) -> str:
+    from utils.telegram import get_credentials
+
+    return (payload.get("token") or "").strip() or get_credentials()[0]
+
+
+@app.post("/api/telegram/check")
+def telegram_check():
+    from utils.telegram import get_bot_info
+
+    try:
+        bot = get_bot_info(_telegram_token(request.get_json() or {}))
+    except RuntimeError as error:
+        return _error(str(error))
+
+    return jsonify({"username": bot.get("username"), "name": bot.get("first_name")})
+
+
+@app.post("/api/telegram/chats")
+def telegram_chats():
+    from utils.telegram import find_chats
+
+    try:
+        chats = find_chats(_telegram_token(request.get_json() or {}))
+    except RuntimeError as error:
+        return _error(str(error))
+
+    return jsonify(chats)
+
+
+@app.post("/api/telegram/test")
+def telegram_test():
+    from utils.telegram import send_message
+
+    payload = request.get_json() or {}
+
+    try:
+        send_message(
+            "✅ Stores Price Tracker is connected. "
+            "Your shopping results will arrive here.",
+            token=_telegram_token(payload),
+            chat_id=(payload.get("chat_id") or "").strip() or None,
+        )
+    except RuntimeError as error:
+        return _error(str(error))
+
+    return jsonify({"sent": True})

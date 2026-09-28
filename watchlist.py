@@ -59,6 +59,10 @@ WATCHLIST = [
             "crispy",
             "gulas",
             "rulada",
+            "cu os",
+            "marinat",
+            "frigarui",
+            "frigărui",
         ],
     ),
 

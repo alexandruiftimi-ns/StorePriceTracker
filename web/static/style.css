@@ -258,7 +258,41 @@ details.more .table-wrap { padding: 0 12px 12px; }
 .form fieldset { border: 0; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 10px; }
 .form legend { font-weight: 700; margin-bottom: 8px; }
 .form-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-#view-settings .form { max-width: 720px; }
+#view-settings .form { max-width: 780px; }
+.settings fieldset.card { padding: 18px 20px; margin: 0; gap: 12px; }
+.settings legend { float: left; width: 100%; font-size: 1.05rem; margin-bottom: 2px; }
+.settings legend + * { clear: both; }
+.small-print { font-size: .82rem; }
+.linkish { border: 0; background: none; color: var(--danger); font: inherit; cursor: pointer; text-decoration: underline; padding: 0; }
+
+.settings fieldset > .btn { align-self: flex-start; }
+.store-picker { display: flex; flex-direction: column; gap: 6px; max-height: 380px; overflow-y: auto; padding-right: 4px; }
+.store-picker:empty { display: none; }
+.form .store-option {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+  font-weight: 500 !important;
+}
+.form .store-option:has(input:checked) { border-color: var(--lidl); background: color-mix(in srgb, var(--lidl) 8%, var(--surface)); }
+.store-option .store-title { font-weight: 700; }
+.store-option .store-address { color: var(--muted); font-size: .82rem; }
+.store-option .store-distance { font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 14px; }
+.steps li { padding-left: 4px; }
+.steps li::marker { font-weight: 800; color: var(--accent); }
+.inline-field { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+.inline-field input { flex: 1; min-width: 200px; }
+.ok-text { color: var(--accent); font-weight: 600; }
+.err-text { color: var(--danger); font-weight: 600; }
+
+.sticky-save {
+  position: sticky; bottom: 0; background: var(--bg); padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.branch { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+.branch::before { content: "📍 "; }
 
 dialog {
   width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 40px);

@@ -9,42 +9,143 @@ from utils.changes import ProductChanges
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
+TELEGRAM_API = "https://api.telegram.org"
 TELEGRAM_MESSAGE_LIMIT = 4000
 
 
-def send_message(message: str) -> None:
-    if not BOT_TOKEN:
-        raise RuntimeError(
-            "TELEGRAM_BOT_TOKEN is missing from .env"
-        )
+def get_credentials() -> tuple[str, str]:
+    """
+    The token and chat id entered in the app's Settings, or
+    TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID from .env.
+    """
+    from utils.catalog import load_settings
 
-    if not CHAT_ID:
-        raise RuntimeError(
-            "TELEGRAM_CHAT_ID is missing from .env"
-        )
+    settings = load_settings()
 
-    message_parts = split_message(message)
+    token = (
+        settings.get("telegram_bot_token")
+        or os.getenv("TELEGRAM_BOT_TOKEN")
+        or ""
+    )
+    chat_id = (
+        settings.get("telegram_chat_id")
+        or os.getenv("TELEGRAM_CHAT_ID")
+        or ""
+    )
 
-    for message_part in message_parts:
-        url = (
-            f"https://api.telegram.org/"
-            f"bot{BOT_TOKEN}/sendMessage"
-        )
+    return token.strip(), str(chat_id).strip()
 
+
+def is_configured() -> bool:
+    return all(get_credentials())
+
+
+def call_api(token: str, method: str, **payload) -> dict:
+    """
+    Errors carry Telegram's description only: the request URL
+    contains the token and must not end up in logs or the UI.
+    """
+    if not token:
+        raise RuntimeError("No Telegram bot token set.")
+
+    try:
         response = requests.post(
-            url,
-            json={
-                "chat_id": CHAT_ID,
-                "text": message_part,
-                "disable_web_page_preview": True,
-            },
+            f"{TELEGRAM_API}/bot{token}/{method}",
+            json=payload,
             timeout=30,
         )
+        data = response.json()
 
-        response.raise_for_status()
+    except (requests.RequestException, ValueError):
+        raise RuntimeError("Could not reach Telegram.") from None
+
+    if not data.get("ok"):
+        description = data.get("description") or "unknown error"
+
+        if response.status_code == 401:
+            description = "the bot token is not valid"
+
+        raise RuntimeError(f"Telegram: {description}")
+
+    return data["result"]
+
+
+def get_bot_info(token: str) -> dict:
+    return call_api(token, "getMe")
+
+
+def find_chats(token: str) -> list[dict]:
+    """
+    Chats that recently messaged the bot, newest first.
+    """
+    try:
+        updates = call_api(token, "getUpdates")
+
+    except RuntimeError as error:
+        # getUpdates is refused while a webhook is set.
+        if "webhook" not in str(error).lower():
+            raise
+
+        call_api(token, "deleteWebhook")
+        updates = call_api(token, "getUpdates")
+
+    chats: dict[str, dict] = {}
+
+    for update in reversed(updates):
+        message = (
+            update.get("message")
+            or update.get("edited_message")
+            or update.get("channel_post")
+            or update.get("my_chat_member")
+            or {}
+        )
+        chat = message.get("chat")
+
+        if not chat:
+            continue
+
+        name = (
+            chat.get("title")
+            or " ".join(
+                part
+                for part in (chat.get("first_name"), chat.get("last_name"))
+                if part
+            )
+            or chat.get("username")
+            or "Chat"
+        )
+
+        chats.setdefault(
+            str(chat["id"]),
+            {"id": str(chat["id"]), "name": name, "type": chat.get("type")},
+        )
+
+    return list(chats.values())
+
+
+def send_message(
+    message: str,
+    token: str | None = None,
+    chat_id: str | None = None,
+) -> None:
+    saved_token, saved_chat_id = get_credentials()
+    token = token or saved_token
+    chat_id = chat_id or saved_chat_id
+
+    if not token or not chat_id:
+        raise RuntimeError(
+            "Telegram is not set up: add your bot token and chat id "
+            "in Settings."
+        )
+
+    for message_part in split_message(message):
+        call_api(
+            token,
+            "sendMessage",
+            chat_id=chat_id,
+            text=message_part,
+            disable_web_page_preview=True,
+        )
 
 
 def split_message(message: str) -> list[str]:
@@ -360,6 +461,9 @@ def build_shopping_report_message(
 
         lines.append(f"  {best['store']}: {price_text}")
         lines.append(f"  {best['name']}")
+
+        if best.get("branch"):
+            lines.append(f"  📍 {best['branch']}")
 
         if best.get("on_sale"):
             promo = best.get("promo_label") or "Promotion"

@@ -74,30 +74,92 @@
       <div class="view-head">
         <div>
           <h1>Settings</h1>
-          <p class="muted">Your location picks the nearest Kaufland for its shelf prices.</p>
+          <p class="muted">Where you shop, and how you get your results. Press <strong>Save settings</strong> at the bottom when you are done.</p>
         </div>
       </div>
-      <form id="settings-form" class="card form">
-        <fieldset>
-          <legend>Location</legend>
+      <form id="settings-form" class="form settings">
+
+        <!-- Location -->
+        <fieldset class="card">
+          <legend>📍 Your location</legend>
+          <p class="muted" id="location-hint">Used to find the stores near you. The default is central Bucharest. Press <strong>Use my current location</strong> (your browser asks for permission), or paste coordinates from Google Maps (right-click a place → click the numbers to copy them).</p>
+          <button type="button" class="btn small" id="use-location">📍 Use my current location</button>
           <div class="row">
             <label>Latitude <input name="latitude" type="number" step="any" required></label>
             <label>Longitude <input name="longitude" type="number" step="any" required></label>
-            <label>Kaufland search radius (km) <input name="kaufland_radius_km" type="number" min="1" max="50" step="1" required></label>
+            <label>Search radius (km) <input name="kaufland_radius_km" type="number" min="1" max="30" step="1" required></label>
           </div>
-          <p class="muted" id="location-hint">The default is central Bucharest. Press <strong>Use my current location</strong> (your browser asks for permission), then <strong>Save settings</strong>. You can also type coordinates copied from Google Maps.</p>
-          <button type="button" class="btn ghost small" id="use-location">📍 Use my current location</button>
+          <p class="muted small-print">Kaufland prices come from the nearest Kaufland within this radius.</p>
         </fieldset>
-        <fieldset>
-          <legend>Stores</legend>
+
+        <!-- Lidl stores -->
+        <fieldset class="card">
+          <legend>🏪 Lidl stores you shop at</legend>
+          <p class="muted">Prices and promotions can differ between Lidl stores. Pick the ones you go to, and results show each store's own prices and which store a promotion applies to. With none picked, Lidl's national price list is used.</p>
+          <div class="actions">
+            <button type="button" class="btn small" id="find-lidl">🔍 Find Lidl stores near my location</button>
+            <span class="muted" id="lidl-status"></span>
+          </div>
+          <div id="lidl-stores" class="store-picker"></div>
+        </fieldset>
+
+        <!-- Stores & options -->
+        <fieldset class="card">
+          <legend>🛒 Stores and options</legend>
           <div class="row" id="store-toggles"></div>
-        </fieldset>
-        <fieldset>
-          <legend>Options</legend>
           <label class="check"><input type="checkbox" name="include_loyalty_prices"> Count loyalty card prices (Lidl Plus, Kaufland Card)</label>
-          <label class="check"><input type="checkbox" name="send_to_telegram"> Also send search results to Telegram (needs .env)</label>
         </fieldset>
-        <div class="form-actions">
+
+        <!-- Telegram -->
+        <fieldset class="card">
+          <legend>📨 Telegram notifications <span class="badge card">optional · free</span></legend>
+          <p class="muted">Get your shopping results on your phone. You create your own Telegram bot, which is free and takes about 2 minutes. The token and chat ID are only stored on this computer.</p>
+          <div id="telegram-state" class="notice hidden"></div>
+
+          <ol class="steps">
+            <li>
+              <strong>Create your bot.</strong> In Telegram, open
+              <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>,
+              send <code>/newbot</code>, then choose a name (anything) and a username ending in <code>bot</code>
+              (for example <code>my_prices_bot</code>). BotFather replies with a <strong>token</strong> that looks like
+              <code>123456789:AAH…</code>. Copy it.
+            </li>
+            <li>
+              <strong>Paste the token here</strong> and press <em>Check token</em>.
+              <div class="inline-field">
+                <input name="telegram_bot_token" type="password" autocomplete="off" spellcheck="false" placeholder="123456789:AAH…">
+                <button type="button" class="btn small" id="tg-check">Check token</button>
+              </div>
+              <div class="muted small-print" id="tg-check-result"></div>
+            </li>
+            <li>
+              <strong>Message your bot.</strong> Open your new bot in Telegram
+              <span id="tg-bot-link"></span>, press <strong>Start</strong> or send it any message, like <code>hi</code>.
+            </li>
+            <li>
+              <strong>Get your chat ID.</strong> Press <em>Find my chat ID</em>. It fills the box for you.
+              <div class="inline-field">
+                <input name="telegram_chat_id" inputmode="numeric" autocomplete="off" placeholder="e.g. 123456789">
+                <button type="button" class="btn small" id="tg-chats">Find my chat ID</button>
+              </div>
+              <div class="muted small-print" id="tg-chats-result"></div>
+            </li>
+            <li>
+              <strong>Test it.</strong> Press <em>Send test message</em> and check Telegram.
+              <div class="inline-field">
+                <button type="button" class="btn small" id="tg-test">Send test message</button>
+                <span class="muted small-print" id="tg-test-result"></span>
+              </div>
+            </li>
+            <li>
+              <strong>Turn it on</strong> and save:
+              <label class="check"><input type="checkbox" name="send_to_telegram"> Send my search results to Telegram</label>
+            </li>
+          </ol>
+          <p class="muted small-print">Keep the token private: anyone who has it can control your bot. If it leaks, send <code>/revoke</code> to @BotFather and paste the new token here. <button type="button" class="linkish" id="tg-remove">Remove saved Telegram details</button></p>
+        </fieldset>
+
+        <div class="form-actions sticky-save">
           <span class="muted" id="settings-status"></span>
           <button class="btn primary" type="submit">Save settings</button>
         </div>

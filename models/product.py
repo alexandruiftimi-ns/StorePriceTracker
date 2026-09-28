@@ -26,3 +26,7 @@ class Product:
     loyalty_card: str | None = None
     package: str | None = None
     source: str | None = None
+
+    # Which physical store(s) the price applies to, e.g.
+    # "Lidl Rahova (2.6 km)" or "All Lidl stores".
+    branch: str | None = None

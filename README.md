@@ -33,18 +33,20 @@ Optional: `playwright install chromium` is only needed for the old
 browser-based Auchan scraper (`search_auchan`), which the app no longer
 uses by default.
 
-### Set your location
+### Set your location and Lidl stores
 
-The default location is **central Bucharest** (Piața Unirii). Kaufland
-prices come from the Kaufland nearest to that location, so set your own:
+The default location is **central Bucharest** (Piața Unirii). Set your own
+so the app uses the stores near you:
 
 1. Start the app and open **Settings**.
 2. Press **📍 Use my current location** and allow the browser's location
    prompt. You can also type coordinates copied from Google Maps
    (right-click a place → click the coordinates to copy them).
-3. Press **Save settings**.
+3. Press **🔍 Find Lidl stores near my location** and tick the Lidl stores
+   you shop at. Each one shows its address and distance.
+4. Press **Save settings**.
 
-Until you do, the Shopping list page shows a reminder.
+Until you set a location, the Shopping list page shows a reminder.
 
 ## Run
 
@@ -54,54 +56,66 @@ python main.py           # CLI scan of all products (+ Telegram, history)
 python main.py --list    # CLI scan of the shopping list only
 ```
 
-## Telegram notifications (optional)
+## Telegram notifications (optional, free)
 
-The app works without Telegram. To get results on your phone, create
-**your own** bot. Each user needs their own bot token and chat id, and no
-token is included in this repository.
+The app works without Telegram. To get your results on your phone, you
+create **your own** Telegram bot (free, about 2 minutes). No token is
+included in this repository.
 
-1. **Create a bot.** In Telegram, open a chat with
-   [@BotFather](https://t.me/BotFather), send `/newbot`, and follow the
-   prompts (a display name, then a username ending in `bot`). BotFather
-   replies with a token like `123456789:AAH...`. This is your
-   `TELEGRAM_BOT_TOKEN`.
-2. **Create your `.env` file.** Copy `.env.example` to `.env` and paste
-   the token:
-   ```
-   TELEGRAM_BOT_TOKEN=123456789:AAH...
-   TELEGRAM_CHAT_ID=
-   ```
-3. **Find your chat id.** Open a chat with your new bot and send it any
-   message (e.g. `hi`). Then run:
-   ```
-   python get_chat_id.py
-   ```
-   In the output, find `"chat": {"id": 123456789, ...}`. That number is
-   your `TELEGRAM_CHAT_ID`; add it to `.env`. If the output shows
-   `"result": []`, send the bot another message and run the script again.
-4. **Test it:** `python test_telegram.py` should send you a message.
-5. **Turn it on:** `python main.py` sends automatically when `.env` is
-   filled in. For the web app, tick **Settings → Also send search results
-   to Telegram**.
+Everything is done in the app, under **Settings → 📨 Telegram
+notifications**, which walks you through these steps:
 
-**Keep your token secret.** Anyone with it can control your bot. `.env` is
-listed in `.gitignore`, so it is never committed. If a token ever leaks,
-send `/revoke` to BotFather to get a new one.
+1. **Create your bot.** In Telegram, open
+   [@BotFather](https://t.me/BotFather), send `/newbot`, choose a name and
+   a username ending in `bot`. BotFather replies with a token like
+   `123456789:AAH...`.
+2. **Paste the token** in Settings and press **Check token**. The app
+   shows your bot's link.
+3. **Message your bot.** Open it in Telegram, press **Start** or send any
+   message.
+4. **Press Find my chat ID.** The app fills in your chat ID.
+5. **Press Send test message** and check Telegram.
+6. **Tick "Send my search results to Telegram"** and press **Save
+   settings**.
+
+The token and chat ID are stored only on your computer, in
+`data/settings.json` (excluded from git). The page never displays a saved
+token again, only its last 4 characters. **Remove saved Telegram details**
+at the bottom of the section deletes them.
+
+**Keep your token secret:** anyone with it can control your bot. If it
+leaks, send `/revoke` to @BotFather and paste the new token in Settings.
+
+<details>
+<summary>Alternative: a <code>.env</code> file (for <code>main.py</code> on a server)</summary>
+
+Copy `.env.example` to `.env` and fill in `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID`. `python get_chat_id.py` prints your chat ID after you
+message the bot. Values entered in Settings take priority over `.env`.
+
+</details>
 
 ## Data sources
 
 | Store    | Regular prices                                             | Promotions                                  |
 |----------|------------------------------------------------------------|---------------------------------------------|
 | Auchan   | auchan.ro search API                                       | same (list price vs. price)                 |
-| Lidl     | daily price file `preturiZilniceLidl.xlsb`                 | lidl.ro search API (incl. Lidl Plus)        |
+| Lidl     | your chosen stores via monitorulpreturilor.info; national `preturiZilniceLidl.xlsb` if none chosen | per-store promotions (monitor) + lidl.ro offers incl. Lidl Plus |
 | Kaufland | monitorulpreturilor.info, nearest store to your location   | kaufland.ro weekly offers (incl. Kaufland Card) |
 
 Kaufland has no online shop, so loose fruit and vegetables only show up
 when they are in the weekly offers.
 
-Prices can differ between stores of the same chain. Kaufland prices come
-from the store nearest to you; Lidl and Auchan prices are the chain's
-published prices, which some individual stores deviate from.
+Prices and promotions can differ between stores of the same chain, so
+every result shows 📍 which store(s) it applies to:
+
+- **Lidl**: each of your chosen stores' own prices. When several of them
+  have the same price they share one row (e.g. "Lidl Rahova (2.6 km),
+  Lidl Doina (2.6 km)"); a store with a different price or promotion
+  gets its own row. Offers from lidl.ro apply to all stores.
+- **Kaufland**: the nearest store (name and distance); weekly-flyer offers
+  apply to all stores.
+- **Auchan**: auchan.ro online prices.
 
 ## Tuning a product
 
@@ -117,9 +131,9 @@ Use **Test search** in the editor, or **✕ not this** in the results, to tune f
 ## Files
 
 - `data/products.json`: your products and shopping list (seeded from `watchlist.py`)
-- `data/settings.json`: location, stores, options
+- `data/settings.json`: location, chosen Lidl stores, options, Telegram token and chat ID
 - `data/last_search.json`: latest search results
 - `history/<store>/`: per-store snapshots written by `main.py`
-- `.env`: your Telegram token and chat id (create from `.env.example`)
+- `.env` (optional): Telegram token and chat ID for command-line use
 
 `data/`, `history/` and `.env` are personal and excluded from git.

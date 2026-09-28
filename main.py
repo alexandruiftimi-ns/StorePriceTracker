@@ -22,12 +22,11 @@ from utils.changes import detect_product_changes
 from utils.deals import group_deals_by_store
 from utils.storage import load_latest_products, save_products
 from utils.telegram import (
-    BOT_TOKEN,
-    CHAT_ID,
     build_best_prices_message,
     build_changes_message,
     build_deals_message,
     build_shopping_report_message,
+    is_configured,
     send_message,
 )
 
@@ -78,8 +77,8 @@ def print_report(report: dict) -> None:
 
 
 def send_telegram(report: dict, products, previous_products) -> None:
-    if not (BOT_TOKEN and CHAT_ID):
-        print("Telegram not configured in .env; skipping.")
+    if not is_configured():
+        print("Telegram is not set up (Settings in the web app, or .env); skipping.")
         return
 
     send_message(build_shopping_report_message(report))

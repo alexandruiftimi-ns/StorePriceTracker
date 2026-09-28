@@ -436,6 +436,7 @@ def search_lidl(
                     else None
                 ),
                 source="Lidl daily prices",
+                branch="All Lidl stores (national price list)",
             )
         )
 
@@ -607,6 +608,7 @@ def _parse_offer(
         loyalty_card=loyalty_card,
         package=packaging,
         source="lidl.ro offers",
+        branch="All Lidl stores (lidl.ro offer)",
     )
 
 

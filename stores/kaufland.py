@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 
 from models.product import Product
 from models.watch_item import WatchItem
+from stores.monitor import search_nearest_store
 from utils.filtering import matches_watch_item
 from utils.http import create_session
 from utils.units import (
@@ -18,11 +19,6 @@ from utils.units import (
 # - regular shelf prices per store: Monitorul Prețurilor, the
 #   government price monitor retailers must report to daily;
 # - promotions: the weekly offers page on kaufland.ro.
-
-MONITOR_API = "https://monitorulpreturilor.info/pmonsvc/Retail"
-KAUFLAND_NETWORK_ID = "KAUFLAND"
-MONITOR_BATCH_SIZE = 100
-MONITOR_MAX_CATALOG_IDS = 400
 
 OFFERS_URL = (
     "https://www.kaufland.ro/oferte/"
@@ -224,6 +220,7 @@ def search_kaufland_offers(
                 loyalty_card=loyalty_card,
                 package=offer["package"] or None,
                 source="kaufland.ro weekly offers",
+                branch="All Kaufland stores (weekly flyer)",
             )
         )
 
@@ -235,32 +232,6 @@ def search_kaufland_offers(
 # ============================================================
 
 
-def _find_catalog_ids(
-    session,
-    watch_item: WatchItem,
-) -> list[str]:
-    response = session.get(
-        f"{MONITOR_API}/GetCatalogProductsByNameNetwork",
-        params={"prodname": watch_item.search_term},
-        timeout=30,
-    )
-
-    response.raise_for_status()
-
-    catalog = response.json().get("Items") or []
-
-    matching_ids = [
-        entry["id"]
-        for entry in catalog
-        if matches_watch_item(
-            product_name=entry.get("name", ""),
-            watch_item=watch_item,
-        )[0]
-    ]
-
-    return matching_ids[:MONITOR_MAX_CATALOG_IDS]
-
-
 def search_kaufland_prices(
     watch_item: WatchItem,
     latitude: float,
@@ -268,101 +239,10 @@ def search_kaufland_prices(
     radius_km: float = 5,
     session=None,
 ) -> list[Product]:
-    session = session or create_session()
-
-    catalog_ids = _find_catalog_ids(session, watch_item)
-
-    # Nearest store offering each catalog product.
-    best_by_catalog_id: dict[str, tuple[float, dict, str]] = {}
-
-    for start in range(0, len(catalog_ids), MONITOR_BATCH_SIZE):
-        batch = catalog_ids[start:start + MONITOR_BATCH_SIZE]
-
-        response = session.get(
-            f"{MONITOR_API}/GetStoresForProductsByLatLon",
-            params={
-                "lat": latitude,
-                "lon": longitude,
-                "buffer": int(radius_km * 1000),
-                "csvprodids": ",".join(batch),
-                "csvnetworkids": KAUFLAND_NETWORK_ID,
-            },
-            timeout=60,
-        )
-
-        response.raise_for_status()
-
-        for store in response.json().get("Items") or []:
-            distance = store.get("distance") or 0
-            store_name = store.get("name") or "Kaufland"
-
-            for raw in store.get("Products") or []:
-                if not raw.get("price"):
-                    continue
-
-                catalog_id = (raw.get("catprod") or {}).get("id")
-                current = best_by_catalog_id.get(catalog_id)
-
-                if current is None or distance < current[0]:
-                    best_by_catalog_id[catalog_id] = (
-                        distance,
-                        raw,
-                        store_name,
-                    )
-
-    results: list[Product] = []
-
-    for distance, raw, store_name in best_by_catalog_id.values():
-        product_name = " ".join(raw.get("name", "").split())
-
-        # Catalog names can differ from the store label, so
-        # confirm the match on the label too.
-        if not matches_watch_item(
-            product_name=product_name,
-            watch_item=watch_item,
-        )[0]:
-            continue
-
-        price = float(raw["price"])
-        sale_unit = (raw.get("unit") or "").upper()
-
-        if sale_unit == "KG":
-            unit_price, unit = round(price, 2), "kg"
-            package = "per kg"
-
-        elif sale_unit == "L":
-            unit_price, unit = round(price, 2), "l"
-            package = "per l"
-
-        else:
-            unit_price, unit = unit_price_from_quantity(
-                price,
-                product_name,
-            )
-            package = None
-
-        is_promo = bool(raw.get("promo"))
-
-        results.append(
-            Product(
-                name=product_name.title(),
-                price=price,
-                store="Kaufland",
-                url=(
-                    "https://monitorulpreturilor.info/"
-                ),
-                watch_label=watch_item.label,
-                watch_id=watch_item.id or None,
-                unit_price=unit_price,
-                unit=unit,
-                on_sale=is_promo,
-                promo_label="Promoție" if is_promo else None,
-                package=package,
-                source=(
-                    f"{store_name} ({distance:.1f} km), "
-                    f"price date {raw.get('pricedate', '?')}"
-                ),
-            )
-        )
-
-    return results
+    return search_nearest_store(
+        watch_item,
+        chain="Kaufland",
+        latitude=latitude,
+        longitude=longitude,
+        radius_km=radius_km,
+    )

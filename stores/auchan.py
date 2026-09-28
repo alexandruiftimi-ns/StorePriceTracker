@@ -573,6 +573,7 @@ def _parse_api_product(
         ),
         package=package,
         source="auchan.ro",
+        branch="auchan.ro online prices",
     )
 
 
